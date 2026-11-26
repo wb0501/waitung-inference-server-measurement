@@ -76,7 +76,7 @@ __pycache__/
 
 ## 与其它仓库的接口
 
-- 被 `codex_qwen_GAIA` 通过 `ssh spk` 调用：
+- 被 codex_qwen 与 codex_qwen_GAIA 分别通过 ssh spk 调用：
   `spark_capture.py worker|collect|status`
 - `spark_capture.py` / `agent_traffic_v3.py` 在测量仓库中有 vendored 副本用于离线测试；
   本仓库为权威来源，变更后需同步。
