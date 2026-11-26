@@ -8,7 +8,7 @@
 Output Processor、SSE Encoder 各自的事件，加上 Prometheus 与 TCP 采样。
 
 它与 Agent 侧无关：GAIA、HumanEval 或其他 workload 由
-`waitung-agent-workload-runners` 驱动，本仓库只负责服务端。
+`codex_qwen_GAIA` 驱动，本仓库只负责服务端。
 
 ## 职责
 
@@ -72,5 +72,5 @@ cd /home/huanglabspk/WaiTung
 见 `REPOSITORY_MANIFEST.md` 中的依赖说明：
 
 ```text
-waitung-agent-workload-runners -> waitung-agent-traffic-measurement -> 本仓库
+codex_qwen_GAIA -> codex_qwen -> 本仓库
 ```
