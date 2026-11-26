@@ -1,0 +1,18 @@
+{
+  "version": "0.24.0",
+  "original_sha256": {
+    "entrypoints/openai/responses/serving.py": "38079aa7e1ca458b81f030efc549439be36ba74dbc3df118217f008c8005a276",
+    "entrypoints/openai/responses/api_router.py": "18c985741760a807730cbe5ca52095009fa8abcfb5441a8ee00f75f0c1f890b4",
+    "v1/engine/core.py": "27b23827a86fd488f1f7cc9a2722fe76d284087ca7cfefef5a30c5e74f21bc71",
+    "v1/engine/output_processor.py": "464c3cda347512cf1090f8e6471d0d3f0f65e286eb9a7b97be52efbc1ffd572a",
+    "v1/core/sched/scheduler.py": "df78076164fe02a63876d7690cefac810f1ba4d8fb58afc15e786c1608064090"
+  },
+  "overlay_sha256": {
+    "entrypoints/openai/responses/serving.py": "2241fca9fc5eda54311fe5a194e6b634a8c1052a5c1f1ea4c42caac6804f750b",
+    "entrypoints/openai/responses/api_router.py": "7d053bc80dd18727329ff5143ddac3cb57377a48eba537768f8963a98741276a",
+    "v1/engine/core.py": "3e6c839166f1ff89b3e3e3fe9bc19677bcdf98529282ce3131769c79d924c572",
+    "v1/engine/output_processor.py": "948bb5ca656c72278da9378d8e12cf78f646d0d7bf05e552c74cca20df0951cc",
+    "v1/core/sched/scheduler.py": "389643bb67fea9114903a2abff317dced9bcee5bdcf2006cbe3ab39ade870b73"
+  },
+  "method": "Docker read-only per-file bind mounts; no compiled extension changes"
+}

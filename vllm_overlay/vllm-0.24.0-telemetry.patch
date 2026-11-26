@@ -1,0 +1,187 @@
+--- a/vllm/entrypoints/openai/responses/api_router.py
++++ b/vllm/entrypoints/openai/responses/api_router.py
+@@ -3,6 +3,8 @@
+ 
+ 
+ from collections.abc import AsyncGenerator
++
++from agent_traffic_v3 import emit as _v3_emit, event_meta as _v3_event_meta, enabled as _v3_enabled
+ from http import HTTPStatus
+ 
+ from fastapi import APIRouter, Depends, FastAPI, Request
+@@ -35,13 +37,26 @@
+     generator: AsyncGenerator[StreamingResponsesResponse, None],
+ ) -> AsyncGenerator[str, None]:
+     """Convert the generator to a stream of events in SSE format"""
++    _v3_response_id = None
+     async for event in generator:
+         event_type = getattr(event, "type", "unknown")
++        if _v3_enabled():
++            _v3_metadata = _v3_event_meta(event)
++            if _v3_metadata.get('response_id'):
++                _v3_response_id = _v3_metadata['response_id']
++            else:
++                _v3_metadata['response_id'] = _v3_response_id
+         # https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#event_stream_format
++        if _v3_enabled():
++            _v3_emit('sse_encoder','sse_encode_start', **_v3_metadata)
+         event_data = (
+             f"event: {event_type}\ndata: "
+             f"{event.model_dump_json(indent=None, by_alias=True)}\n\n"
+         )
++        if _v3_enabled():
++            _v3_emit('sse_encoder','sse_encode_done', encoded_bytes=len(event_data.encode('utf-8')),
++                     **_v3_metadata)
++            _v3_emit('sse_encoder','stream_yield', **_v3_metadata)
+         yield event_data
+ 
+ 
+@@ -58,10 +73,15 @@
+ @with_cancellation
+ @load_aware_call
+ async def create_responses(request: ResponsesRequest, raw_request: Request):
++    if _v3_enabled():
++        _v3_emit('api_server','request_validation_done',request_id=request.request_id,
++                 path='/v1/responses',timestamp_semantics='FastAPI route start after JSON validation')
+     handler = responses(raw_request)
+     if handler is None:
+         raise NotImplementedError("The model does not support Responses API")
+ 
++    if _v3_enabled():
++        _v3_emit('api_server','responses_handler_start',request_id=request.request_id)
+     generator = await handler.create_responses(request, raw_request)
+ 
+     if isinstance(generator, ErrorResponse):
+--- a/vllm/entrypoints/openai/responses/serving.py
++++ b/vllm/entrypoints/openai/responses/serving.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
+ import asyncio
++from agent_traffic_v3 import emit as _v3_emit, enabled as _v3_enabled
+ import time
+ from collections import deque
+ from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping, Sequence
+@@ -393,6 +394,10 @@
+         else:
+             messages, engine_inputs = await self._make_request(request, prev_response)
+ 
++        if _v3_enabled():
++            _v3_emit('api_server','request_parse_ready_for_engine',request_id=request.request_id,
++                     input_count=len(engine_inputs),
++                     timestamp_semantics='vLLM response input rendering complete; not raw JSON parse')
+         request_metadata = RequestResponseMetadata(request_id=request.request_id)
+         if raw_request:
+             raw_request.state.request_metadata = request_metadata
+--- a/vllm/v1/core/sched/scheduler.py
++++ b/vllm/v1/core/sched/scheduler.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ import itertools
+ import time
++from agent_traffic_v3 import emit as _v3_emit, enabled as _v3_enabled
+ from collections import defaultdict, deque
+ from collections.abc import Iterable
+ from dataclasses import replace
+@@ -1056,6 +1057,17 @@
+                 len(num_scheduled_tokens)
+             ]
+ 
++        if _v3_enabled():
++            for _rid, _count in num_scheduled_tokens.items():
++                _request=self.requests.get(_rid)
++                if _request is not None:
++                    _v3_emit('scheduler','scheduled_chunk',request_id=_rid,
++                             num_scheduled_tokens=_count,
++                             num_computed_tokens=_request.num_computed_tokens,
++                             num_prompt_tokens=_request.num_prompt_tokens,
++                             prefill_remaining_tokens=max(0,_request.num_prompt_tokens-_request.num_computed_tokens-_count),
++                             scheduler_step=self.current_step,
++                             running_requests=len(self.running),waiting_requests=len(self.waiting)+len(self.skipped_waiting))
+         scheduler_output = SchedulerOutput(
+             scheduled_new_reqs=new_reqs_data,
+             scheduled_cached_reqs=cached_reqs_data,
+@@ -1980,6 +1992,10 @@
+                 request.streaming_queue = deque()
+             self._enqueue_waiting_request(request)
+             self.requests[request.request_id] = request
++            if _v3_enabled():
++                _v3_emit('scheduler','engine_enqueue',request_id=request.request_id,
++                         num_prompt_tokens=request.num_prompt_tokens,
++                         num_computed_tokens=request.num_computed_tokens)
+             if self.connector is not None:
+                 self.connector.on_new_request(request)
+             if self.log_stats:
+--- a/vllm/v1/engine/core.py
++++ b/vllm/v1/engine/core.py
+@@ -6,6 +6,7 @@
+ import signal
+ import threading
+ import time
++from agent_traffic_v3 import emit as _v3_emit, enabled as _v3_enabled
+ from collections import defaultdict, deque
+ from collections.abc import Callable, Generator
+ from concurrent.futures import Future
+@@ -504,7 +505,13 @@
+         engine_core_outputs = self.scheduler.update_from_output(
+             scheduler_output, model_output
+         )
+-
++        if _v3_enabled():
++            for _core_batch in engine_core_outputs.values():
++                for _item in _core_batch.outputs:
++                    _v3_emit('engine_output','engine_core_output_available',request_id=_item.request_id,
++                             new_token_count=len(_item.new_token_ids),
++                             finish_reason=str(_item.finish_reason) if _item.finish_reason is not None else None,
++                             timestamp_semantics='after scheduler.update_from_output, not GPU kernel completion')
+         return engine_core_outputs, scheduler_output.total_num_scheduled_tokens > 0
+ 
+     def post_step(self, model_executed: bool) -> None:
+@@ -605,6 +612,15 @@
+         engine_core_outputs = self.scheduler.update_from_output(
+             scheduler_output, model_output
+         )
++        if _v3_enabled():
++            # Same observation site as step(); this path is used when the batch
++            # queue is enabled (async scheduling / max_concurrent_batches > 1).
++            for _core_batch in engine_core_outputs.values():
++                for _item in _core_batch.outputs:
++                    _v3_emit('engine_output','engine_core_output_available',request_id=_item.request_id,
++                             new_token_count=len(_item.new_token_ids),
++                             finish_reason=str(_item.finish_reason) if _item.finish_reason is not None else None,
++                             timestamp_semantics='after scheduler.update_from_output, not GPU kernel completion')
+ 
+         # NOTE(nick): We can either handle the deferred tasks here or save
+         # in a field and do it immediately once step_with_batch_queue is
+--- a/vllm/v1/engine/output_processor.py
++++ b/vllm/v1/engine/output_processor.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
+ import asyncio
++from agent_traffic_v3 import emit as _v3_emit, enabled as _v3_enabled
+ from collections import defaultdict, deque
+ from collections.abc import Iterable
+ from dataclasses import dataclass
+@@ -616,6 +617,11 @@
+             )
+ 
+             new_token_ids = engine_core_output.new_token_ids
++            if _v3_enabled():
++                _v3_emit('engine_output','output_processor_received',request_id=req_id,
++                         new_token_count=len(new_token_ids),
++                         finish_reason=str(engine_core_output.finish_reason) if engine_core_output.finish_reason is not None else None,
++                         timestamp_semantics='OutputProcessor received batch; not individual token GPU ready')
+             pooling_output = engine_core_output.pooling_output
+             finish_reason = engine_core_output.finish_reason
+             stop_reason = engine_core_output.stop_reason
+@@ -661,6 +667,9 @@
+                 if req_state.queue is not None:
+                     # AsyncLLM: put into queue for handling by generate().
+                     req_state.queue.put(request_output)
++                    if _v3_enabled():
++                        _v3_emit('engine_output','api_queue_delivered',request_id=req_id,
++                                 new_token_count=len(new_token_ids),finished=bool(request_output.finished))
+                 else:
+                     # LLMEngine: return list of RequestOutputs.
+                     request_outputs.append(request_output)

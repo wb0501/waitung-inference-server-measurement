@@ -1,0 +1,56 @@
+# --- Inference server measurement: excluded artifacts ----------------------
+# Model weights, runtime data and captures are never committed.
+Models/
+exports/
+*.zip
+*.tar.gz
+*.tgz
+*.pcap
+*.pcapng
+*.jsonl
+logs/
+runtime/
+guard/
+
+# Virtual environments and caches
+.venv/
+.venv-vllm/
+hf-venv/
+miniconda3/
+site-packages/
+__pycache__/
+*.py[cod]
+.cache/
+.trition/
+*.so
+
+# Runtime state and diagnostics
+deployment/before-*/
+deployment/before_unified_*/
+deployment/probe-archives/
+deployment/review-packages/
+deployment/safety-*/
+deployment/controlled-validation/
+deployment/live-validation/
+deployment/controller-review/
+deployment/*.json
+deployment/*.txt
+deployment/*.log
+deployment/codex-config-reference.html
+vllm_metrics.txt
+
+# Credentials and private material
+.env
+.env.*
+*.pem
+*_identity
+id_rsa*
+known_hosts
+auth.json
+**/auth.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
